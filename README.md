@@ -1,3 +1,26 @@
+## lvr2 (jazzy) - 26.0.0-1
+
+The packages in the `lvr2` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release --rosdistro jazzy lvr2` on `Sun, 01 Nov 2026 21:20:02 -0000`
+
+The `lvr2` package was released.
+
+Version of package(s) in repository `lvr2`:
+
+- upstream repository: https://github.com/uos/lvr2.git
+- release repository: https://github.com/ros2-gbp/lvr2-release.git
+- rosdistro version: `25.2.2-1`
+- old version: `25.2.2-1`
+- new version: `26.0.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.3`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## lvr2 (jazzy) - 25.2.2-1
 
 The packages in the `lvr2` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release lvr2 --rosdistro jazzy -e` on `Sun, 08 Mar 2026 23:59:35 -0000`
