@@ -48,7 +48,6 @@ set(LVR2_SOURCES
     io/modelio/ObjIO.cpp
     io/modelio/DatIO.cpp
     io/modelio/LasIO.cpp
-    io/modelio/GeoTIFFIO.cpp
     # io/KinectIO.cpp
     io/AttributeMeshIOBase.cpp
     io/modelio/PPMIO.cpp
@@ -154,11 +153,11 @@ endif(draco_FOUND)
 # 3D Tiles
 #####################################################################################
 
-if(WITH_3DTILES)
+if(LVR2_WITH_3DTILES)
     list(APPEND LVR2_SOURCES
         io/Tiles3dIO.cpp
         io/modelio/B3dmIO.cpp)
-endif()
+endif(LVR2_WITH_3DTILES)
 
 #####################################################################################
 # RiVLib
@@ -167,7 +166,7 @@ endif()
 if(RiVLib_FOUND)
     list(APPEND LVR2_SOURCES
         io/baseio/RxpIO.cpp)
-endif()
+endif(RiVLib_FOUND)
 
 #####################################################################################
 # OpenCL
@@ -177,6 +176,14 @@ if(OPENCL_FOUND)
     list(APPEND LVR2_SOURCES
         reconstruction/opencl/ClSurface.cpp
         reconstruction/opencl/ClStatisticalOutlierFilter.cpp)
+endif()
+
+#####################################################################################
+# GDAL
+#####################################################################################
+
+if(LVR2_WITH_GDAL)
+    list(APPEND LVR2_SOURCES io/modelio/GeoTIFFIO.cpp)
 endif()
 
 #####################################################################################
@@ -206,9 +213,7 @@ endif(UNIX)
 #####################################################################################
 
 add_library(lvr2core OBJECT ${LVR2_SOURCES})
-if(WITH_3DTILES)
-    add_dependencies(lvr2core cesium-native)
-endif(WITH_3DTILES)
+# (dependency moved to root CMakeLists.txt by Patch 5)
 
 target_link_libraries(lvr2core
     PRIVATE
@@ -218,6 +223,7 @@ target_link_libraries(lvr2core
 target_link_libraries(lvr2core
     PUBLIC
     Eigen3::Eigen
+    ${LVR2_LIB_DEPENDENCIES}
 )
 
 #####################################################################################
