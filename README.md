@@ -59,7 +59,7 @@ cmake .. && make
 Install the required libraries using [Homebrew](https://brew.sh):
 
 ```bash
-brew install boost boost-mpi cmake eigen flann gcc glew gsl hdf5 opencv lz4 qt vtk 
+brew install boost boost-mpi cmake eigen flann gcc glew gsl hdf5 opencv libtiff lz4 qt vtk yaml-cpp
 
 mkdir build
 cd build
@@ -353,4 +353,4 @@ Please reference the following papers when using the lvr2 library in your scient
 
 You can simply download this library and compile it inside your ROS 2 workspace. The following ROS 2 distributions are supported:
 
-[![humble](https://github.com/uos/lvr2/actions/workflows/ros-humble.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-humble.yml) [![iron](https://github.com/uos/lvr2/actions/workflows/ros-iron.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-iron.yml) [![jazzy](https://github.com/uos/lvr2/actions/workflows/ros-jazzy.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-jazzy.yml)
+[![humble](https://github.com/uos/lvr2/actions/workflows/ros-humble.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-humble.yml) [![iron](https://github.com/uos/lvr2/actions/workflows/ros-iron.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-iron.yml) [![jazzy](https://github.com/uos/lvr2/actions/workflows/ros-jazzy.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-jazzy.yml) [![lyrical](https://github.com/uos/lvr2/actions/workflows/ros-lyrical.yml/badge.svg)](https://github.com/uos/lvr2/actions/workflows/ros-lyrical.yml)
