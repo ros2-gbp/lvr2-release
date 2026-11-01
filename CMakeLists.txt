@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(lvr2 VERSION 25.2.2)
+project(lvr2 VERSION 26.0.0)
 
 # OPTIONS
 option(LVR2_BUILD_EXAMPLES "Build the examples" OFF)
 option(LVR2_BUILD_VIEWER "Build lvr2_viewer" OFF)
 option(LVR2_BUILD_TOOLS "Build tools including lvr2_reconstruct" ON)
 option(LVR2_BUILD_TOOLS_EXPERIMENTAL "Build experimental tools" OFF)
+option(LVR2_BUILD_TESTING "Build the tests" OFF)
 option(LVR2_WITH_KINFU "Compile LVR Kinfu" OFF)
 option(LVR2_WITH_3DTILES "Compile with 3DTiles support" OFF)
 option(LVR2_WITH_CUDA "Compile with CUDA support, if available" ON)
@@ -13,6 +14,7 @@ option(LVR2_WITH_OPENCL "Compile with OpenCL support, if available" ON)
 option(LVR2_WITH_PCL "Compile with PCL support" OFF)
 option(LVR2_WITH_FREENECT "Compile with libfreenect grabber" OFF)
 option(LVR2_WITH_CV_NONFREE "Use OpenCV non-free descriptors" OFF)
+option(LVR2_WITH_GDAL "Compile with GDAL integrations (GeoTIFFIO)" OFF)
 
 ## Compile as C++17
 set(CMAKE_CXX_STANDARD 17)
@@ -145,8 +147,11 @@ include_directories(${TIFF_INCLUDE_DIRS})
 #------------------------------------------------------------------------------
 # Searching for GDAL
 #------------------------------------------------------------------------------
-find_package(GDAL REQUIRED)
-include_directories(${GDAL_INCLUDE_DIR})
+if (LVR2_WITH_GDAL)
+  find_package(GDAL REQUIRED)
+  include_directories(${GDAL_INCLUDE_DIR})
+  list(APPEND LVR2_DEFINITIONS -DLVR2_USE_GDAL)
+endif (LVR2_WITH_GDAL)
 
 #------------------------------------------------------------------------------
 # Searching for OpenCV
@@ -449,20 +454,28 @@ endif(LVR2_WITH_PCL)
 #------------------------------------------------------------------------------
 # Searching for OpenMP
 #------------------------------------------------------------------------------
-find_package(OpenMP)
-if(OPENMP_FOUND)
-  message(STATUS "Found OpenMP")
-  link_directories(${OpenMP_LIBRARY_DIRS})
-  include_directories(${OpenMP_INCLUDE_DIRS})
-  list(APPEND LVR2_DEFINITIONS -DLVR2_USE_OPEN_MP)
-
-  # tasks only in OpenMP 3.0 and above thus we need llvm openmp in experimental mode
-  # See here: https://devblogs.microsoft.com/cppblog/improved-openmp-support-for-cpp-in-visual-studio/
-  if(MSVC)
-    set(CMAKE_CXX_FLAGS " -openmp:llvm -openmp:experimental ${CMAKE_CXX_FLAGS}")
+# On macOS with Apple Clang, FindOpenMP cannot auto-discover libomp from
+# Homebrew because the compiler does not ship with OpenMP headers.  Detect the
+# Homebrew prefix and add it to the search path so find_path / find_library
+# (and the OpenMP module hints) can discover it automatically.
+if(APPLE)
+  find_program(BREW_EXECUTABLE brew)
+  if(BREW_EXECUTABLE)
+    execute_process(COMMAND ${BREW_EXECUTABLE} --prefix libomp
+      OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET)
+    if(HOMEBREW_LIBOMP_PREFIX AND EXISTS "${HOMEBREW_LIBOMP_PREFIX}")
+      list(APPEND CMAKE_PREFIX_PATH ${HOMEBREW_LIBOMP_PREFIX})
+    endif()
   endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-endif(OPENMP_FOUND)
+endif()
+
+find_package(OpenMP COMPONENTS CXX)
+if(OpenMP_FOUND)
+  message(STATUS "Found OpenMP")
+  list(APPEND LVR2_DEFINITIONS -DLVR2_USE_OPEN_MP)
+endif(OpenMP_FOUND)
 
 #------------------------------------------------------------------------------
 ## Searching for libfreenect
@@ -543,6 +556,7 @@ if(LVR2_WITH_3DTILES)
     PREFIX cesium-native
     GIT_REPOSITORY "https://github.com/CesiumGS/cesium-native"
     GIT_TAG "v0.16.0"
+    PATCH_COMMAND sed -i "s/-Werror -Wall/-Wall/g" <SOURCE_DIR>/CMakeLists.txt
     LOG_CONFIGURE ON
     LOG_INSTALL ON # Hide cmake output (creates a lot of spam on every build)
     LOG_BUILD ON
@@ -552,13 +566,22 @@ if(LVR2_WITH_3DTILES)
                                           # this is in quotes because otherwise cmake adds a random "x86_64-linux-gnu" to lib paths. No idea why.
         -DCESIUM_TESTS_ENABLED=OFF        # don't build the tests
         -DDRACO_TRANSCODER_SUPPORTED=ON   # enable Gltf support for draco
-        -DCMAKE_CXX_FLAGS=-fPIC           # tell cmake to compile as shared libraries
+        "-DCMAKE_CXX_FLAGS=-fPIC -include cstdint -Wno-error"
+        "-DCMAKE_C_FLAGS=-fPIC"
   )
   ExternalProject_Get_Property(cesium-native BINARY_DIR)
   include_directories(${BINARY_DIR}/install/include)
   link_directories(${BINARY_DIR}/install/lib)
 
   ExternalProject_Get_Property(cesium-native SOURCE_DIR)
+  # Remove cesium-native's bundled spdlog from its install tree
+  # to prevent it from shadowing lvr2's own (newer) spdlog headers.
+  ExternalProject_Add_Step(cesium-native strip-spdlog
+    COMMAND ${CMAKE_COMMAND} -E remove_directory
+            ${BINARY_DIR}/install/include/spdlog
+    DEPENDEES install
+    ALWAYS FALSE
+  )
   include_directories(${SOURCE_DIR}/extern/draco/src
                       ${SOURCE_DIR}/extern/draco/third_party/tinygltf
                       ${BINARY_DIR}    # draco generates include files in BINARY_DIR
@@ -568,7 +591,13 @@ if(LVR2_WITH_3DTILES)
 
   list(APPEND LVR2_DEFINITIONS -DLVR2_USE_3DTILES -DLVR2_USE_DRACO)
 
-  set(3DTILES_LIBRARIES Cesium3DTiles Cesium3DTilesWriter CesiumGltf CesiumGltfWriter CesiumJsonWriter)
+  set(3DTILES_LIBRARIES
+    Cesium3DTiles Cesium3DTilesWriter Cesium3DTilesReader Cesium3DTilesSelection
+    CesiumGltf CesiumGltfWriter CesiumGltfReader
+    CesiumJsonWriter CesiumJsonReader
+    CesiumAsync CesiumGeometry CesiumGeospatial CesiumUtility CesiumIonClient
+    async++ uriparser tinyxml2 sqlite3 modp_b64 csprng ktx_read s2geometry)
+  set(3DTILES_FOUND ON)
 
 else(LVR2_WITH_3DTILES)
   #------------------------------------------------------------------------------
@@ -665,13 +694,10 @@ set(LVR2_LIB_DEPENDENCIES
     ${Boost_IOSTREAMS_LIBRARY}
     ${OPENGL_LIBRARIES}
     ${GLUT_LIBRARIES}
-    ${GDAL_LIBRARY}
     ${OpenCV_LIBS}
     ${GSL_LIBRARIES}
     ${LZ4_LIBRARY}
     ${TIFF_LIBRARY}
-    ${YAML_CPP_LIBRARIES}
-    ${OpenMP_CXX_LIBRARIES}
     ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES}
     Eigen3::Eigen
     lvr2rply
@@ -688,18 +714,19 @@ set(LVR2_LIB_DEPENDENCIES
     ${Boost_IOSTREAMS_LIBRARY}
     ${OPENGL_LIBRARIES}
     ${GLUT_LIBRARIES}
-    ${GDAL_LIBRARY}
     ${OpenCV_LIBS}
     ${GSL_LIBRARIES}
     ${LZ4_LIBRARY}
     ${TIFF_LIBRARY}
-    ${YAML_CPP_LIBRARIES}
-    ${OpenMP_CXX_LIBRARIES}
     ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES}
     Eigen3::Eigen
     m
     ${RDB_LIBRARIES}
     )
+endif()
+
+if(OpenMP_FOUND)
+  list(APPEND LVR2_LIB_DEPENDENCIES OpenMP::OpenMP_CXX)
 endif()
 
 #####################################################################################
@@ -734,13 +761,11 @@ if(MPI_FOUND)
   set(LVR2_LIB_DEPENDENCIES ${LVR2_LIB_DEPENDENCIES} ${MPI_LIBRARIES})
 endif(MPI_FOUND)
 
-if(MSVC)
-  list(APPEND LVR2_LIB_DEPENDENCIES yaml-cpp)
-endif(MSVC)
-
-if(YAML_CPP_LIBRARIES)
+if(TARGET yaml-cpp::yaml-cpp)
+  list(APPEND LVR2_LIB_DEPENDENCIES yaml-cpp::yaml-cpp)
+elseif(YAML_CPP_LIBRARIES)
   list(APPEND LVR2_LIB_DEPENDENCIES ${YAML_CPP_LIBRARIES})
-endif(YAML_CPP_LIBRARIES)
+endif()
 
 if(embree_FOUND)
   list(APPEND LVR2_LIB_DEPENDENCIES ${EMBREE_LIBRARY})
@@ -750,18 +775,30 @@ if(3DTILES_FOUND)
   list(APPEND LVR2_LIB_DEPENDENCIES ${3DTILES_LIBRARIES})
 endif(3DTILES_FOUND)
 
+if(GDAL_FOUND)
+  list(APPEND LVR2_LIB_DEPENDENCIES ${GDAL_LIBRARY})
+endif(GDAL_FOUND)
+
 ###############################################################################
 # LIBRARIES
 ###############################################################################
 
 add_subdirectory(src/liblvr2)
 
+# Wire cesium-native ExternalProject into the lvr2 build targets.
+# Must be done here (root scope, after add_subdirectory) so that all three
+# targets — cesium-native, lvr2core, and lvr2 — are already defined.
+if(LVR2_WITH_3DTILES)
+    add_dependencies(lvr2core cesium-native)
+    add_dependencies(lvr2 cesium-native)
+endif(LVR2_WITH_3DTILES)
+
 ###############################################################################
 # BINARIES
 ###############################################################################
 
 if(NOT MSVC)
-# add_subdirectory(src/tools/lvr2_largescale_reconstruct)
+  add_subdirectory(src/tools/lvr2_largescale_reconstruct)
 endif(NOT MSVC)
 
 if(LVR2_BUILD_TOOLS)
@@ -848,6 +885,14 @@ if(LVR2_BUILD_VIEWER)
     add_subdirectory(src/tools/lvr2_ascii_viewer)
   endif()
 endif(LVR2_BUILD_VIEWER)
+
+###############################################################################
+# TESTS
+###############################################################################
+if (LVR2_BUILD_TESTING)
+  enable_testing()
+  add_subdirectory(src/tests)
+endif()
 
 ###############################################################################
 # CMAKE FILES
